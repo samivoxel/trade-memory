@@ -78,7 +78,7 @@ export default function SearchPage() {
 
       if (result.results.length === 0) {
         setStatus(
-          "تصویر دارای بردار ذخیره‌شده‌ای برای مقایسه پیدا نشد."
+          "نمونه مشابهی در آرشیو پیدا نشد."
         );
         return;
       }
@@ -98,8 +98,8 @@ export default function SearchPage() {
   }
 
   return (
-    <main className="min-h-screen bg-zinc-950 p-6">
-      <div className="mx-auto max-w-3xl">
+    <main className="min-h-screen bg-zinc-950 p-4 sm:p-6">
+      <div className="mx-auto max-w-6xl">
         <div className="flex items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-white">
@@ -131,10 +131,14 @@ export default function SearchPage() {
 
           {previewUrl && (
             <div className="overflow-hidden rounded-xl border border-zinc-700 bg-black">
+              <div className="border-b border-zinc-800 px-4 py-3 text-sm font-bold text-zinc-200">
+                تصویر فعلی
+              </div>
+
               <img
                 src={previewUrl}
                 alt="تصویر مورد جستجو"
-                className="h-auto max-h-[420px] w-full object-contain"
+                className="h-auto max-h-[520px] w-full object-contain"
               />
             </div>
           )}
@@ -145,7 +149,9 @@ export default function SearchPage() {
             disabled={loading || !image}
             className="w-full rounded-xl bg-blue-600 py-3 font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {loading ? "در حال جستجو..." : "پیدا کردن تصاویر مشابه"}
+            {loading
+              ? "در حال جستجو..."
+              : "پیدا کردن تصاویر مشابه"}
           </button>
 
           {status && (
@@ -155,14 +161,14 @@ export default function SearchPage() {
           )}
         </div>
 
-        <div className="mt-8 grid gap-6">
+        <div className="mt-8 grid gap-8">
           {results.map((item, index) => (
             <article
               key={item.id}
               className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900"
             >
               <div className="flex items-center justify-between border-b border-zinc-800 p-4">
-                <span className="text-sm text-zinc-400">
+                <span className="text-sm font-bold text-zinc-200">
                   نتیجه {index + 1}
                 </span>
 
@@ -171,20 +177,54 @@ export default function SearchPage() {
                 </span>
               </div>
 
-              {item.image_url ? (
-                <img
-                  src={item.image_url}
-                  alt="چارت مشابه ذخیره‌شده"
-                  className="h-auto w-full object-contain"
-                />
-              ) : (
-                <div className="flex min-h-48 items-center justify-center bg-zinc-800 text-zinc-400">
-                  تصویر در دسترس نیست
+              <div className="grid gap-px bg-zinc-800 md:grid-cols-2">
+                <div className="bg-zinc-950">
+                  <div className="border-b border-zinc-800 px-4 py-3 text-sm font-bold text-zinc-300">
+                    تصویر فعلی
+                  </div>
+
+                  {previewUrl ? (
+                    <div className="flex min-h-64 items-center justify-center bg-black">
+                      <img
+                        src={previewUrl}
+                        alt="تصویر فعلی برای مقایسه"
+                        className="h-auto max-h-[520px] w-full object-contain"
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex min-h-64 items-center justify-center text-zinc-500">
+                      تصویر فعلی در دسترس نیست
+                    </div>
+                  )}
                 </div>
-              )}
+
+                <div className="bg-zinc-950">
+                  <div className="border-b border-zinc-800 px-4 py-3 text-sm font-bold text-zinc-300">
+                    تصویر مشابه ذخیره‌شده
+                  </div>
+
+                  {item.image_url ? (
+                    <div className="flex min-h-64 items-center justify-center bg-black">
+                      <img
+                        src={item.image_url}
+                        alt="چارت مشابه ذخیره‌شده"
+                        className="h-auto max-h-[520px] w-full object-contain"
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex min-h-64 items-center justify-center text-zinc-500">
+                      تصویر در دسترس نیست
+                    </div>
+                  )}
+                </div>
+              </div>
 
               <div className="p-5">
-                <p className="whitespace-pre-wrap leading-8 text-zinc-100">
+                <h2 className="text-sm font-bold text-zinc-400">
+                  توضیحات نمونه ذخیره‌شده
+                </h2>
+
+                <p className="mt-3 whitespace-pre-wrap leading-8 text-zinc-100">
                   {item.description}
                 </p>
 

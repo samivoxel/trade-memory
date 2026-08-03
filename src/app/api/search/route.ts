@@ -164,7 +164,8 @@ export async function POST(request: Request) {
         ),
       }))
       .sort((first, second) => second.similarity - first.similarity)
-      .slice(0, 10);
+      .filter(item => item.similarity >= 0.75)
+      .slice(0, 3);
 
     const results = await Promise.all(
       rankedRows.map(async (item) => {
