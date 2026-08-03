@@ -8,11 +8,19 @@ import {
 } from "react";
 import Link from "next/link";
 
-export default function UploadPage() {
+type SearchResult = {
+  id: string;
+  image_url: string | null;
+  description: string;
+  created_at: string;
+  similarity: number;
+};
+
+export default function SearchPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [image, setImage] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState("");
-  const [description, setDescription] = useState("");
+  const [results, setResults] = useState<SearchResult[]>([]);
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -35,32 +43,25 @@ export default function UploadPage() {
 
     setImage(file);
     setPreviewUrl(file ? URL.createObjectURL(file) : "");
+    setResults([]);
     setStatus("");
   }
 
-  async function handleSubmit() {
+  async function handleSearch() {
     if (!image) {
       setStatus("تصویر را انتخاب کنید.");
       return;
     }
 
-    if (!description.trim()) {
-      setStatus("توضیحات را وارد کنید.");
-      return;
-    }
-
     setLoading(true);
-    setStatus("در حال تحلیل و ذخیره تصویر...");
+    setResults([]);
+    setStatus("در حال تحلیل و مقایسه تصویر...");
 
     try {
       const formData = new FormData();
       formData.append("image", image);
-      formData.append(
-        "description",
-        description.trim()
-      );
 
-      const response = await fetch("/api/upload", {
+      const response = await fetch("/api/search", {
         method: "POST",
         body: formData,
       });
@@ -69,29 +70,27 @@ export default function UploadPage() {
 
       if (!response.ok || !result.success) {
         throw new Error(
-          result.message ?? "ذخیره تصویر ناموفق بود."
+          result.message ?? "جستجوی تصویر ناموفق بود."
         );
       }
 
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
+      setResults(result.results);
+
+      if (result.results.length === 0) {
+        setStatus(
+          "تصویر دارای بردار ذخیره‌شده‌ای برای مقایسه پیدا نشد."
+        );
+        return;
       }
 
-      setImage(null);
-      setPreviewUrl("");
-      setDescription("");
       setStatus(
-        "تصویر و توضیحات با موفقیت ذخیره شدند."
+        `${result.results.length} تصویر نزدیک پیدا شد.`
       );
-
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
     } catch (error) {
       setStatus(
         error instanceof Error
           ? error.message
-          : "خطایی هنگام ذخیره تصویر رخ داد."
+          : "خطایی هنگام جستجوی تصویر رخ داد."
       );
     } finally {
       setLoading(false);
@@ -100,15 +99,15 @@ export default function UploadPage() {
 
   return (
     <main className="min-h-screen bg-zinc-950 p-6">
-      <div className="mx-auto max-w-xl">
+      <div className="mx-auto max-w-3xl">
         <div className="flex items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-white">
-              ثبت تصویر جدید
+              جستجوی تصویر مشابه
             </h1>
 
             <p className="mt-2 text-sm text-zinc-400">
-              تصویر چارت و توضیحات مرتبط را ذخیره کنید
+              تصویر چارت فعلی را برای مقایسه انتخاب کنید
             </p>
           </div>
 
@@ -134,30 +133,19 @@ export default function UploadPage() {
             <div className="overflow-hidden rounded-xl border border-zinc-700 bg-black">
               <img
                 src={previewUrl}
-                alt="پیش‌نمایش تصویر چارت"
+                alt="تصویر مورد جستجو"
                 className="h-auto max-h-[420px] w-full object-contain"
               />
             </div>
           )}
 
-          <textarea
-            rows={9}
-            value={description}
-            onChange={(event) =>
-              setDescription(event.target.value)
-            }
-            disabled={loading}
-            placeholder="توضیحات مربوط به این چارت را وارد کنید..."
-            className="w-full resize-none rounded-xl border border-zinc-700 bg-zinc-800 p-4 leading-8 text-white outline-none focus:border-blue-500 disabled:opacity-50"
-          />
-
           <button
             type="button"
-            onClick={handleSubmit}
-            disabled={loading}
+            onClick={handleSearch}
+            disabled={loading || !image}
             className="w-full rounded-xl bg-blue-600 py-3 font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {loading ? "در حال پردازش..." : "ذخیره"}
+            {loading ? "در حال جستجو..." : "پیدا کردن تصاویر مشابه"}
           </button>
 
           {status && (
@@ -165,6 +153,49 @@ export default function UploadPage() {
               {status}
             </p>
           )}
+        </div>
+
+        <div className="mt-8 grid gap-6">
+          {results.map((item, index) => (
+            <article
+              key={item.id}
+              className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900"
+            >
+              <div className="flex items-center justify-between border-b border-zinc-800 p-4">
+                <span className="text-sm text-zinc-400">
+                  نتیجه {index + 1}
+                </span>
+
+                <span className="rounded-full bg-blue-600 px-3 py-1 text-sm font-bold text-white">
+                  {item.similarity.toFixed(1)}٪ شباهت
+                </span>
+              </div>
+
+              {item.image_url ? (
+                <img
+                  src={item.image_url}
+                  alt="چارت مشابه ذخیره‌شده"
+                  className="h-auto w-full object-contain"
+                />
+              ) : (
+                <div className="flex min-h-48 items-center justify-center bg-zinc-800 text-zinc-400">
+                  تصویر در دسترس نیست
+                </div>
+              )}
+
+              <div className="p-5">
+                <p className="whitespace-pre-wrap leading-8 text-zinc-100">
+                  {item.description}
+                </p>
+
+                <p className="mt-4 text-xs text-zinc-500">
+                  {new Date(item.created_at).toLocaleString(
+                    "fa-IR"
+                  )}
+                </p>
+              </div>
+            </article>
+          ))}
         </div>
       </div>
     </main>

@@ -15,6 +15,39 @@ const supabase = createClient(
   }
 );
 
+type ChartRow = {
+  id: string;
+  image_path: string;
+  description: string;
+  created_at: string;
+  embedding: number[] | null;
+};
+
+function cosineSimilarity(first: number[], second: number[]) {
+  if (first.length !== second.length) {
+    return -1;
+  }
+
+  let dotProduct = 0;
+  let firstMagnitude = 0;
+  let secondMagnitude = 0;
+
+  for (let index = 0; index < first.length; index += 1) {
+    dotProduct += first[index] * second[index];
+    firstMagnitude += first[index] * first[index];
+    secondMagnitude += second[index] * second[index];
+  }
+
+  const denominator =
+    Math.sqrt(firstMagnitude) * Math.sqrt(secondMagnitude);
+
+  if (!denominator) {
+    return -1;
+  }
+
+  return dotProduct / denominator;
+}
+
 async function createChartFingerprint(buffer: Buffer) {
   const metadata = await sharp(buffer).metadata();
 
@@ -24,14 +57,8 @@ async function createChartFingerprint(buffer: Buffer) {
 
   const left = Math.round(metadata.width * 0.04);
   const top = Math.round(metadata.height * 0.1);
-  const width = Math.max(
-    1,
-    Math.round(metadata.width * 0.82)
-  );
-  const height = Math.max(
-    1,
-    Math.round(metadata.height * 0.8)
-  );
+  const width = Math.max(1, Math.round(metadata.width * 0.82));
+  const height = Math.max(1, Math.round(metadata.height * 0.8));
 
   const safeWidth = Math.min(width, metadata.width - left);
   const safeHeight = Math.min(height, metadata.height - top);
@@ -54,6 +81,7 @@ async function createChartFingerprint(buffer: Buffer) {
     });
 
   const values = Array.from(data, (value) => value / 255);
+
   const average =
     values.reduce((sum, value) => sum + value, 0) /
     values.length;
@@ -66,45 +94,21 @@ async function createChartFingerprint(buffer: Buffer) {
 
   const standardDeviation = Math.sqrt(variance) || 1;
 
-  const embedding = values.map(
+  return values.map(
     (value) => (value - average) / standardDeviation
   );
-
-  return {
-    embedding,
-    width: metadata.width,
-    height: metadata.height,
-  };
 }
 
 export async function POST(request: Request) {
-  let uploadedFileName = "";
-
   try {
     const formData = await request.formData();
     const file = formData.get("image");
-    const description = formData.get("description");
 
     if (!(file instanceof File)) {
       return NextResponse.json(
         {
           success: false,
           message: "تصویر را انتخاب کنید.",
-        },
-        {
-          status: 400,
-        }
-      );
-    }
-
-    if (
-      typeof description !== "string" ||
-      !description.trim()
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "توضیحات را وارد کنید.",
         },
         {
           status: 400,
@@ -122,8 +126,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          message:
-            "فقط تصاویر JPG، PNG و WEBP مجاز هستند.",
+          message: "فقط تصاویر JPG، PNG و WEBP مجاز هستند.",
         },
         {
           status: 400,
@@ -132,71 +135,68 @@ export async function POST(request: Request) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
+    const queryEmbedding = await createChartFingerprint(buffer);
 
-    const {
-      embedding,
-      width,
-      height,
-    } = await createChartFingerprint(buffer);
-
-    const extension =
-      file.type === "image/png"
-        ? "png"
-        : file.type === "image/webp"
-          ? "webp"
-          : "jpg";
-
-    uploadedFileName = `${crypto.randomUUID()}.${extension}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from("chart")
-      .upload(uploadedFileName, buffer, {
-        contentType: file.type,
-        upsert: false,
-      });
-
-    if (uploadError) {
-      throw new Error(uploadError.message);
-    }
-
-    const { error: databaseError } = await supabase
+    const { data, error } = await supabase
       .from("chart_examples")
-      .insert({
-        image_path: uploadedFileName,
-        description: description.trim(),
-        embedding,
-        width,
-        height,
-        file_size: file.size,
-      });
+      .select(
+        "id, image_path, description, created_at, embedding"
+      )
+      .not("embedding", "is", null);
 
-    if (databaseError) {
-      await supabase.storage
-        .from("chart")
-        .remove([uploadedFileName]);
-
-      throw new Error(databaseError.message);
+    if (error) {
+      throw new Error(error.message);
     }
+
+    const rows = (data ?? []) as ChartRow[];
+
+    const rankedRows = rows
+      .filter(
+        (item) =>
+          Array.isArray(item.embedding) &&
+          item.embedding.length === queryEmbedding.length
+      )
+      .map((item) => ({
+        ...item,
+        similarity: cosineSimilarity(
+          queryEmbedding,
+          item.embedding as number[]
+        ),
+      }))
+      .sort((first, second) => second.similarity - first.similarity)
+      .slice(0, 10);
+
+    const results = await Promise.all(
+      rankedRows.map(async (item) => {
+        const { data: signedUrlData } = await supabase.storage
+          .from("chart")
+          .createSignedUrl(item.image_path, 3600);
+
+        return {
+          id: item.id,
+          description: item.description,
+          created_at: item.created_at,
+          similarity: Math.max(
+            0,
+            Math.min(100, item.similarity * 100)
+          ),
+          image_url: signedUrlData?.signedUrl ?? null,
+        };
+      })
+    );
 
     return NextResponse.json({
       success: true,
-      message:
-        "تصویر و توضیحات با موفقیت ذخیره شدند.",
+      results,
     });
   } catch (error) {
-    if (uploadedFileName) {
-      await supabase.storage
-        .from("chart")
-        .remove([uploadedFileName]);
-    }
-
     return NextResponse.json(
       {
         success: false,
         message:
           error instanceof Error
             ? error.message
-            : "ذخیره تصویر ناموفق بود.",
+            : "جستجوی تصاویر ناموفق بود.",
       },
       {
         status: 500,
