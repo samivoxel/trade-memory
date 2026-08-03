@@ -66,7 +66,23 @@ export default function SearchPage() {
         body: formData,
       });
 
-      const result = await response.json();
+      const responseText = await response.text();
+
+      let result: {
+        success?: boolean;
+        message?: string;
+        results?: SearchResult[];
+      };
+
+      try {
+        result = JSON.parse(responseText);
+      } catch {
+        throw new Error(
+          response.ok
+            ? "پاسخ سرور نامعتبر بود."
+            : `خطای سرور: ${responseText || response.status}`
+        );
+      }
 
       if (!response.ok || !result.success) {
         throw new Error(
@@ -74,9 +90,9 @@ export default function SearchPage() {
         );
       }
 
-      setResults(result.results);
+      setResults(result.results ?? []);
 
-      if (result.results.length === 0) {
+      if ((result.results ?? []).length === 0) {
         setStatus(
           "نمونه مشابهی در آرشیو پیدا نشد."
         );
@@ -84,7 +100,7 @@ export default function SearchPage() {
       }
 
       setStatus(
-        `${result.results.length} تصویر نزدیک پیدا شد.`
+        `${(result.results ?? []).length} تصویر نزدیک پیدا شد.`
       );
     } catch (error) {
       setStatus(
